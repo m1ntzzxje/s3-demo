@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.venv/
+env/
+venv/
+ENV/
+
+# Secrets
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+.DS_Store
+
+# MinIO Data (Crucial to ignore)
+minio/data/
+minio/minio.exe
+
+# Logs & DB
+*.log
+*.sqlite
+db.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
