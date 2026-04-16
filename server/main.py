@@ -5,10 +5,46 @@ from pydantic import BaseModel
 from typing import Optional
 from s3_service import (
     create_bucket_if_not_exists, enable_versioning, set_lifecycle_policy,
-    list_files, upload_file, get_presigned_url, delete_file
+    list_files, upload_file, get_presigned_url, delete_file, move_file
 )
 import auth_service
-import time, json, logging, jwt
+import time, json, logging, jwt, os, re
+
+# ─── File Security ────────────────────────────────────────────────────────────
+BLOCKED_EXTENSIONS = {
+    '.exe', '.bat', '.cmd', '.sh', '.msi', '.dll', '.scr',
+    '.ps1', '.vbs', '.wsf', '.com', '.pif', '.hta', '.cpl',
+    '.jar', '.inf', '.reg',
+}
+
+ALLOWED_MIME_PREFIXES = (
+    'image/', 'text/', 'application/pdf', 'application/json',
+    'application/zip', 'application/gzip', 'application/x-tar',
+    'application/x-7z-compressed', 'application/x-rar-compressed',
+    'application/vnd.openxmlformats', 'application/vnd.ms-',
+    'application/msword', 'application/octet-stream',
+    'video/', 'audio/', 'application/xml',
+)
+
+def validate_file(filename: str, content_type: str):
+    """Validate file extension and MIME type. Raises HTTPException if blocked."""
+    # Sanitize filename — strip path traversal characters
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', filename)
+    # Check extension
+    ext = os.path.splitext(safe_name)[1].lower()
+    if ext in BLOCKED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' is blocked for security reasons"
+        )
+    # Check MIME type
+    mime = (content_type or 'application/octet-stream').lower()
+    if not any(mime.startswith(prefix) for prefix in ALLOWED_MIME_PREFIXES):
+        raise HTTPException(
+            status_code=400,
+            detail=f"MIME type '{mime}' is not allowed"
+        )
+    return safe_name
 
 # ─── App & Middleware ─────────────────────────────────────────────────────────
 app = FastAPI(title="ESoft S3 API")
@@ -36,14 +72,35 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             algorithms=[auth_service.ALGORITHM]
         )
         email = payload.get("sub")
+        # Đọc user_id trực tiếp từ token payload (không cần truy vấn DB thêm lần nữa)
+        user_id_from_token = payload.get("user_id")
         if email is None:
             raise HTTPException(status_code=401, detail="Invalid auth token")
         user = auth_service.users_collection.find_one({"email": email})
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
-        return {"id": str(user["_id"]), "username": user["username"], "email": email}
+        return {
+            "id": user_id_from_token or str(user["_id"]),
+            "username": user["username"],
+            "email": email
+        }
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+# ─── Audit Log Helper ─────────────────────────────────────────────────────────
+from datetime import datetime, timezone as dt_timezone
+
+def log_action(user_id: str, action: str, detail: dict = None):
+    """Ghi log hành động vào MongoDB logs_collection."""
+    try:
+        auth_service.logs_collection.insert_one({
+            "user_id": user_id,
+            "action": action,
+            "detail": detail or {},
+            "timestamp": datetime.now(dt_timezone.utc)
+        })
+    except Exception as e:
+        logging.warning(f"[Log] Failed to write audit log: {e}")
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
 @app.on_event("startup")
@@ -133,25 +190,32 @@ def get_files_api(current_user: dict = Depends(get_current_user)):
 async def upload_api(
     file: UploadFile = File(...),
     lock_days: int = Form(0),
+    prefix: str = Form(""),
     current_user: dict = Depends(get_current_user)
 ):
+    # ── Security: Validate file type ──
+    safe_filename = validate_file(file.filename, file.content_type)
+
     contents = await file.read()
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds the 20MB limit for demo")
 
     import hashlib
     content_hash = hashlib.sha256(contents).hexdigest()
-    
-    # Check if this exact content already exists for this user (Simple deduplication check)
-    prefix = f"{current_user['id']}/"
-    existing_files = list_files(BUCKET_NAME, prefix)
-    is_content_duplicate = False
-    
-    # In real world, we'd store hashes in DB. 
-    # For demo, we can simulate by checking if we've seen this hash before in our session activity
-    # Or just assume success if it's new.
-    
-    key = f"{current_user['id']}/uploads/{int(time.time() * 1000)}_{file.filename}"
+
+    # ── Deduplication thực: So sánh SHA256 với MongoDB files_collection ──
+    existing_doc = auth_service.files_collection.find_one({
+        "user_id": current_user["id"],
+        "sha256": content_hash
+    })
+    is_content_duplicate = existing_doc is not None
+
+    # Clean up prefix to prevent traversal
+    clean_prefix = prefix.strip().lstrip('/')
+    if clean_prefix and not clean_prefix.endswith('/'):
+        clean_prefix += '/'
+
+    key = f"{current_user['id']}/uploads/{clean_prefix}{int(time.time() * 1000)}_{safe_filename}"
     try:
         result = upload_file(
             bucket_name=BUCKET_NAME,
@@ -160,10 +224,32 @@ async def upload_api(
             content_type=file.content_type or "application/octet-stream",
             lock_days=lock_days
         )
+
+        # ── Lưu metadata file vào MongoDB (bao gồm version_id từ S3) ──
+        if not is_content_duplicate:
+            auth_service.files_collection.insert_one({
+                "user_id": current_user["id"],
+                "filename": safe_filename,
+                "key": key,
+                "sha256": content_hash,
+                "size": len(contents),
+                "content_type": file.content_type or "application/octet-stream",
+                "version_id": result.get("VersionId"),
+                "lock_days": lock_days,
+                "uploaded_at": datetime.now(dt_timezone.utc)
+            })
+
+        # ── Ghi audit log ──
+        log_action(current_user["id"], "upload", {
+            "filename": safe_filename, "size": len(contents),
+            "sha256": content_hash, "duplicate": is_content_duplicate,
+            "lock_days": lock_days
+        })
+
         return {
-            "message": "File uploaded successfully", 
+            "message": "File uploaded successfully",
             "result": result,
-            "is_content_duplicate": is_content_duplicate # Can be expanded with real hash DB
+            "is_content_duplicate": is_content_duplicate
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -200,7 +286,83 @@ def delete_api(key: str, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         delete_file(BUCKET_NAME, key)
+        log_action(current_user["id"], "delete", {"key": key})
         return {"message": "File deleted or marked for deletion (versioning)"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class MoveModel(BaseModel):
+    source_key: str
+    target_folder: str # e.g. "folder/subfolder/"
+
+@app.post("/api/files/move")
+def move_api(body: MoveModel, current_user: dict = Depends(get_current_user)):
+    if not body.source_key.startswith(f"{current_user['id']}/"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    parts = body.source_key.split('/')
+    filename = parts[-1]
+    
+    user_uploads_root = f"{current_user['id']}/uploads/"
+    
+    clean_target = body.target_folder.strip().lstrip('/')
+    if clean_target and not clean_target.endswith('/'):
+        clean_target += '/'
+        
+    target_key = f"{user_uploads_root}{clean_target}{filename}"
+    
+    if target_key == body.source_key:
+        return {"message": "Already in target folder"}
+
+    try:
+        move_file(BUCKET_NAME, body.source_key, target_key)
+        auth_service.files_collection.update_one(
+            {"user_id": current_user["id"], "key": body.source_key},
+            {"$set": {"key": target_key}}
+        )
+        log_action(current_user["id"], "move", {"from": body.source_key, "to": target_key})
+        return {"message": "File moved successfully", "new_key": target_key}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/folders")
+def delete_folder_api(prefix: str, current_user: dict = Depends(get_current_user)):
+    """Delete all objects with a specific prefix (simulating folder deletion)."""
+    if not prefix or not prefix.startswith(f"{current_user['id']}/"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    if not prefix.endswith('/'):
+        prefix += '/'
+
+    try:
+        s3 = auth_service.s3_client_ref()
+        # List all versions (to clean up everything including versions)
+        response = s3.list_object_versions(Bucket=BUCKET_NAME, Prefix=prefix)
+        
+        objects_to_delete = []
+        for v in response.get('Versions', []):
+            objects_to_delete.append({'Key': v['Key'], 'VersionId': v['VersionId']})
+        for m in response.get('DeleteMarkers', []):
+            objects_to_delete.append({'Key': m['Key'], 'VersionId': m['VersionId']})
+
+        if not objects_to_delete:
+            return {"message": "Folder is already empty"}
+
+        # S3 batch delete (max 1000 per call)
+        # For simplicity in demo, we delete what we found in one go
+        s3.delete_objects(
+            Bucket=BUCKET_NAME,
+            Delete={'Objects': objects_to_delete, 'Quiet': True}
+        )
+        
+        # Also clean up MongoDB
+        auth_service.files_collection.delete_many({
+            "user_id": current_user["id"],
+            "key": {"$regex": f"^{re.escape(prefix)}"}
+        })
+        
+        log_action(current_user["id"], "delete_folder", {"prefix": prefix, "count": len(objects_to_delete)})
+        return {"message": f"Deleted folder and {len(objects_to_delete)} objects"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -230,6 +392,7 @@ def restore_file_api(key: str, current_user: dict = Depends(get_current_user)):
         if not markers:
             raise HTTPException(status_code=404, detail="No delete marker found")
         s3.delete_object(Bucket=BUCKET_NAME, Key=key, VersionId=markers[0]['VersionId'])
+        log_action(current_user["id"], "restore", {"key": key})
         return {"message": f"Restored: {key.split('/')[-1]}"}
     except HTTPException:
         raise
@@ -278,6 +441,9 @@ def share_file_api(body: ShareModel, current_user: dict = Depends(get_current_us
         }},
         upsert=True
     )
+    log_action(current_user["id"], "share", {
+        "key": body.key, "target_email": body.target_email
+    })
     return {"message": f"Shared with {body.target_email}"}
 
 @app.get("/api/shared")
@@ -319,10 +485,13 @@ def get_dept_files_api(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/department/upload")
 async def dept_upload_api(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    # ── Security: Validate file type ──
+    safe_filename = validate_file(file.filename, file.content_type)
+
     contents = await file.read()
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
-    key = f"{DEPT_PREFIX}{current_user['username']}/{int(time.time() * 1000)}_{file.filename}"
+    key = f"{DEPT_PREFIX}{current_user['username']}/{int(time.time() * 1000)}_{safe_filename}"
     try:
         result = upload_file(BUCKET_NAME, key, contents, file.content_type or "application/octet-stream")
         return {"message": "Uploaded to department", "key": key, "result": result}

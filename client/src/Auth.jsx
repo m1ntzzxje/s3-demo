@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Database, Mail, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
 import './Auth.css';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
 const Auth = ({ onLoginSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
@@ -32,7 +34,7 @@ const Auth = ({ onLoginSuccess }) => {
         ? { email: formData.email, password: formData.password, mfa_code: formData.mfa_code || null }
         : { username: formData.username, email: formData.email, password: formData.password };
         
-      const res = await fetch(`http://localhost:3000${endpoint}`, {
+      const res = await fetch(`${API_URL.replace(/\/api$/, '')}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyPayload)

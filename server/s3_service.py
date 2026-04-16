@@ -100,3 +100,17 @@ def delete_file(bucket_name: str, key: str):
     except Exception as e:
         logging.error(f"Failed to delete file: {e}")
         raise e
+
+def move_file(bucket_name: str, source_key: str, target_key: str):
+    """S3 Move: Copy to target, then delete source."""
+    try:
+        s3_client.copy_object(
+            Bucket=bucket_name,
+            CopySource={'Bucket': bucket_name, 'Key': source_key},
+            Key=target_key
+        )
+        s3_client.delete_object(Bucket=bucket_name, Key=source_key)
+        return True
+    except Exception as e:
+        logging.error(f"Move failed: {e}")
+        raise e

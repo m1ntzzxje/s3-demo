@@ -41,4 +41,10 @@ Just run the launcher at the root:
 - `Auth.css`: Phong cách riêng cho màn hình đăng nhập chuyên nghiệp.
 
 ### 📦 Storage (`/minio`)
-- `start_minio.bat`: Script khởi động nhanh server lưu trữ MinIO trên máy cục bộ.
+
+## 🔐 Security & Setup (Crucial)
+For privacy and safety, sensitive credentials are NOT committed to the repository.
+1. Copy `server/.env.example` to `server/.env`.
+2. Copy `client/.env.example` to `client/.env`.
+3. Update the `.env` files with your actual credentials and a secure `JWT_SECRET`.
+4. Ensure MongoDB is running before starting the services.

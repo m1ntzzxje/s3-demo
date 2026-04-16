@@ -9,8 +9,15 @@ if not exist minio.exe (
     echo [INFO] Tai xuong thanh cong!
 )
 
-set MINIO_ROOT_USER=esoft_admin
-set MINIO_ROOT_PASSWORD=esoft_secret_key
+:: --- SECURITY CONFIGURATION ---
+if "%MINIO_ROOT_USER%"=="" set MINIO_ROOT_USER=esoft_admin
+if "%MINIO_ROOT_PASSWORD%"=="" set MINIO_ROOT_PASSWORD=esoft_secret_key
+
+echo [SECURITY] Using MinIO Root User: %MINIO_ROOT_USER%
+if "%MINIO_ROOT_USER%"=="esoft_admin" (
+    echo [!] WARNING: Using default demo credentials. 
+    echo [!] For GitHub safety, do NOT use these for real data.
+)
 
 if not exist "%~dp0data" (
     mkdir "%~dp0data"

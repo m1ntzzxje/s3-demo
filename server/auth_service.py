@@ -6,7 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 # --- MongoDB Connections ---
 # Will connect to localhost MongoDB by default.
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI must be set in .env file.")
 client = MongoClient(MONGO_URI)
 db = client['esoft_s3_db']
 users_collection = db['users']
@@ -18,13 +20,26 @@ users_collection.create_index("email", unique=True)
 shares_collection = db['shares']
 shares_collection.create_index([("key", 1), ("target_id", 1)], unique=True)
 
+# Files metadata collection (deduplication & file tracking)
+files_collection = db['files']
+files_collection.create_index([("user_id", 1), ("sha256", 1)])
+
+# Logs collection (audit trail)
+logs_collection = db['logs']
+logs_collection.create_index([("user_id", 1), ("timestamp", -1)])
+
 def s3_client_ref():
     """Return the configured S3 client for versioning operations."""
     from s3_config import s3_client
     return s3_client
 
 # --- Security ---
-SECRET_KEY = os.getenv("JWT_SECRET", "super_secret_esoft_key_2026")
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET must be set in .env file. "
+        "Do NOT hardcode secrets in source code."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
 
@@ -71,8 +86,8 @@ def authenticate_user(email, password):
     if not verify_password(password, user['password']):
         return {"success": False, "message": "Invalid email or password"}
         
-    # Valid user, generate token
-    token = create_access_token(data={"sub": user["email"]})
+    # Valid user, generate token — payload chứa cả user_id và email
+    token = create_access_token(data={"sub": user["email"], "user_id": str(user["_id"])})
     
     return {
         "success": True, 
