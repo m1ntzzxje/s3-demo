@@ -646,3 +646,28 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(250%); }
 }
+
+/* ─── Sync Monitor Animations ─────────────────────────────────────────────── */
+.spin-icon { animation: spin-anim 0.9s linear infinite; }
+@keyframes spin-anim { 100% { transform: rotate(360deg); } }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.5); }
+}
+
+@keyframes flow-slide {
+  0%   { left: -12px; opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { left: calc(100% + 6px); opacity: 0; }
+}
+
+.flow-dot {
+  position: absolute;
+  top: 50%; transform: translateY(-50%);
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #3b82f6;
+  animation: flow-slide 1.8s ease-in-out infinite;
+  box-shadow: 0 0 6px #3b82f6;
+}

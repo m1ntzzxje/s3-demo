@@ -3,7 +3,12 @@ from s3_config import s3_client
 from botocore.exceptions import ClientError
 import logging
 
-def create_bucket_if_not_exists(bucket_name: str):
+import datetime
+import os
+
+BUCKET_NAME = os.getenv("BUCKET_NAME", "esoft-backup-bucket")
+
+def create_bucket_if_not_exists(bucket_name: str = BUCKET_NAME):
     try:
         s3_client.head_bucket(Bucket=bucket_name)
         logging.info(f"Bucket {bucket_name} already exists.")
@@ -104,13 +109,21 @@ def delete_file(bucket_name: str, key: str):
 def move_file(bucket_name: str, source_key: str, target_key: str):
     """S3 Move: Copy to target, then delete source."""
     try:
+        # 1. Copy object
         s3_client.copy_object(
             Bucket=bucket_name,
             CopySource={'Bucket': bucket_name, 'Key': source_key},
             Key=target_key
         )
+        
+        # 2. Verify target exists before deleting source (Atomic-ish)
+        s3_client.head_object(Bucket=bucket_name, Key=target_key)
+        
+        # 3. Delete source
         s3_client.delete_object(Bucket=bucket_name, Key=source_key)
         return True
     except Exception as e:
-        logging.error(f"Move failed: {e}")
+        logging.error(f"Move failed [{source_key} -> {target_key}]: {e}")
+        # If target was created but delete failed, we don't want to leave source if possible
+        # but for now we raise to notify the caller
         raise e

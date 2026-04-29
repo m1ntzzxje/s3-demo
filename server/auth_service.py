@@ -28,6 +28,10 @@ files_collection.create_index([("user_id", 1), ("sha256", 1)])
 logs_collection = db['logs']
 logs_collection.create_index([("user_id", 1), ("timestamp", -1)])
 
+# Sync jobs collection (3-node backup tracking)
+sync_jobs_collection = db['sync_jobs']
+sync_jobs_collection.create_index([("job_type", 1), ("started_at", -1)])
+
 def s3_client_ref():
     """Return the configured S3 client for versioning operations."""
     from s3_config import s3_client

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,7 +8,10 @@ from s3_service import (
     list_files, upload_file, get_presigned_url, delete_file, move_file
 )
 import auth_service
+import sync_service
 import time, json, logging, jwt, os, re
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # ─── File Security ────────────────────────────────────────────────────────────
 BLOCKED_EXTENSIONS = {
@@ -58,7 +61,7 @@ app.add_middleware(
 )
 
 # ─── Constants ────────────────────────────────────────────────────────────────
-BUCKET_NAME = "esoft-backup-bucket"
+BUCKET_NAME = os.getenv("BUCKET_NAME", "esoft-backup-bucket")
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 # ─── Auth Dependency ──────────────────────────────────────────────────────────
@@ -102,7 +105,9 @@ def log_action(user_id: str, action: str, detail: dict = None):
     except Exception as e:
         logging.warning(f"[Log] Failed to write audit log: {e}")
 
-# ─── Startup ──────────────────────────────────────────────────────────────────
+# ─── Startup / Shutdown ──────────────────────────────────────────────────────
+_scheduler = BackgroundScheduler(timezone="UTC")
+
 @app.on_event("startup")
 async def startup_event():
     logging.getLogger().setLevel(logging.INFO)
@@ -113,6 +118,29 @@ async def startup_event():
         logging.info(f"[Setup] Bucket [{BUCKET_NAME}] is ready with Versioning & Lifecycle enabled.")
     except Exception as e:
         logging.error(f"Error during S3 startup: {e}")
+
+    # ── APScheduler: 3-Node Backup Jobs ──────────────────────────────────────
+    sync_hour_push = int(os.getenv("SYNC_S3_TO_TRANSIT_HOUR", "0"))
+    sync_hour_pull = int(os.getenv("SYNC_SERVER2_PULL_HOUR",  "3"))
+
+    _scheduler.add_job(
+        sync_service.run_global_pipeline,
+        trigger=CronTrigger(hour=sync_hour_push, minute=0),
+        id="job_global_pipeline",
+        name=f"Global 3-Node Sync ({sync_hour_push:02d}:00 UTC)",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.start()
+
+    logging.info(f"[Scheduler] Jobs registered: push={sync_hour_push}h UTC, pull={sync_hour_pull}h UTC")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if _scheduler.running:
+        _scheduler.shutdown(wait=False)
+        logging.info("[Scheduler] APScheduler stopped.")
+
 
 # ─── Auth Endpoints ──────────────────────────────────────────────────────────
 class RegisterModel(BaseModel):
@@ -504,5 +532,88 @@ def dept_download_api(key: str, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         return {"url": get_presigned_url(BUCKET_NAME, key)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── 3-Node Sync Endpoints ───────────────────────────────────────────────────
+@app.get("/api/sync/user-status")
+def get_user_sync_status_api(current_user: dict = Depends(get_current_user)):
+    """Return the last sync time for the current user."""
+    return sync_service.get_user_sync_status(current_user["id"])
+
+@app.post("/api/sync/user-trigger")
+def trigger_user_sync_api(background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    """Trigger a 3-node backup for the current user's files only."""
+    background_tasks.add_task(sync_service.run_user_pipeline, current_user["id"])
+    log_action(current_user["id"], "user_sync_trigger", {})
+    return {"message": "Personal hard-copy backup started"}
+
+@app.get("/api/sync/status")
+
+def sync_status_api(current_user: dict = Depends(get_current_user)):
+    """Return real-time status of all 3 nodes + last job summaries."""
+    try:
+        # Default to user-scoped status for regular users
+        return sync_service.get_sync_status_scoped(current_user["id"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sync/history")
+def sync_history_api(
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user)
+):
+    """Return last N sync job records from MongoDB."""
+    try:
+        # Default to user-scoped history for regular users
+        return sync_service.get_sync_history_scoped(user_id=current_user["id"], limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sync/trigger/push")
+def sync_trigger_push_api(
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually trigger Server1 → S3 Transit push (User-scoped)."""
+    background_tasks.add_task(sync_service.run_push_to_transit, current_user["id"])
+    log_action(current_user["id"], "sync_trigger_push", {})
+    return {"message": "Personal transit push started"}
+
+
+@app.post("/api/sync/trigger/pull")
+def sync_trigger_pull_api(
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually trigger S3 Transit → Server2 pull (User-scoped)."""
+    background_tasks.add_task(sync_service.run_pull_to_server2, current_user["id"])
+    log_action(current_user["id"], "sync_trigger_pull", {})
+    return {"message": "Personal Server2 pull started"}
+
+
+@app.post("/api/sync/trigger/pipeline")
+def sync_trigger_pipeline_api(
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually trigger the full 3-node pipeline (User-scoped)."""
+    background_tasks.add_task(sync_service.run_user_pipeline, current_user["id"])
+    log_action(current_user["id"], "sync_trigger_pipeline", {})
+    return {"message": "Personal backup pipeline started"}
+
+
+@app.post("/api/sync/cleanup")
+def sync_cleanup_api(
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually clean up today's S3 transit prefix (only if Server 2 confirmed)."""
+    try:
+        result = sync_service.cleanup_s3_transit(current_user["id"])
+        log_action(current_user["id"], "sync_cleanup", result)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
