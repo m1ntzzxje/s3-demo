@@ -36,7 +36,10 @@ const Auth = ({ onLoginSuccess }) => {
         
       const res = await fetch(`${API_URL.replace(/\/api$/, '')}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'any'
+        },
         body: JSON.stringify(bodyPayload)
       });
       

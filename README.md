@@ -12,6 +12,15 @@ Just run the launcher at the root:
 ```
 *It will start MinIO, Backend (Port 3000), and Frontend (Port 5173).*
 
+### 🌐 Public Access with Ngrok
+If you want to share the demo or access it from another device:
+1. Run `run_demo.bat` first.
+2. Run `START_NGROK.bat` (located in the root).
+3. Copy the generated `https://...ngrok-free.app` URL.
+4. Update `client/.env` -> `VITE_API_URL=https://your-url.ngrok-free.app/api`.
+5. Your Frontend will now talk to the public backend!
+
+
 ## 🛡️ Key Features
 1. **Multi-tenancy**: Every user has an isolated `user_id/` prefix on S3.
 2. **Hybrid Backup**: Sync local transactions to Physical S3 Layer.

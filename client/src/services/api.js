@@ -1,12 +1,16 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 export const getAuthHeaders = (token) => {
-  return { 'Authorization': `Bearer ${token}` };
+  return { 
+    'Authorization': `Bearer ${token}`,
+    'ngrok-skip-browser-warning': 'any'
+  };
 };
 
 export const apiCall = async (url, token, options = {}, onAuthError) => {
   const headers = {
     ...getAuthHeaders(token),
+    'ngrok-skip-browser-warning': '69420',
     ...(options.headers || {})
   };
 
