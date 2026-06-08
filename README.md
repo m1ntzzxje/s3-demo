@@ -1,83 +1,87 @@
-# Professional README for ESoft S3 Hybrid Backup Demo
+# ESoft S3 Hybrid Backup Demo 🚀
 
-## 📁 System Architecture
-- *Client (React + Vite)*: Modern UI with Glassmorphism, Dashboard, and File Explorer.
-- *Server (FastAPI)*: JWT-based Auth, Multi-tenant S3 Gateway.
-- *Storage*: MinIO (Local S3 Simulation) with Versioning & Lifecycle policies.
+Dự án mô phỏng hệ thống sao lưu dữ liệu lai (Hybrid Backup) 3-Node sử dụng React (Frontend), FastAPI (Backend), MinIO (S3 Storage) và MongoDB.
 
-## 🚀 Getting Started (One-Click)
-Just run the launcher at the root:
-./run_demo.bat
-It will start MinIO, Backend (Port 3000), and Frontend (Port 5173).
+---
 
-### 🌐 Public Access with Ngrok
-If you want to share the demo or access it from another device:
-1. Run run_demo.bat first.
-2. Run START_NGROK.bat (located in the root).
-3. Copy the generated https://...ngrok-free.app URL.
-4. Update client/.env -> VITE_API_URL=https://your-url.ngrok-free.app/api.
-5. Your Frontend will now talk to the public backend!
+## 📌 Yêu cầu hệ thống
+Trước khi khởi chạy, hãy đảm bảo máy tính của bạn đã cài đặt:
+1. **Node.js** (để chạy Frontend)
+2. **Python 3.x** (để chạy Backend)
+3. **MongoDB** (đang chạy tại cổng mặc định `27017`)
 
+---
 
-## 🛡️ Key Features
-1. *Multi-tenancy*: Every user has an isolated user_id/ prefix on S3.
-2. *Hybrid Backup*: Sync local transactions to Physical S3 Layer.
-3. *Anti-Ransomware*: S3 Versioning & Trash system allows 100% recovery.
-4. *Collaboration*: Dedicated "Department" shared folder and peer-to-peer "Share" feature.
+## ⚡ Hướng dẫn khởi chạy nhanh (1-Click)
 
-## 🛠️ Tech Stack
-- *Frontend*: React, Recharts (Stats), Lucide Icons, Vanilla CSS.
-- *Backend*: Python (FastAPI), Boto3 (S3 Standard), MongoDB (Auth & Sharing metadata).
-- *Security*: Bcrypt password hashing, JWT Authorization, prefix-based isolation.
+### **Bước 1: Cài đặt & Khởi chạy lần đầu**
+Tại thư mục gốc của dự án, chạy file sau để tự động cài đặt thư viện và khởi động toàn bộ dịch vụ:
+👉 **`INSTALL_AND_START.bat`**
 
-## 📂 Structure & File Details
+### **Bước 2: Các lần chạy sau**
+Khi các thư viện đã được cài đặt đầy đủ, những lần sau bạn chỉ cần chạy file:
+👉 **`run_demo.bat`**
 
-### 🟢 Root Directory (Quản lý dự án)
-- INSTALL_AND_START.bat: Kịch bản cài đặt tự động (Virtual Env, npm install) và khởi chạy toàn bộ hệ thống.
-- run_demo.bat: Trình khởi chạy 1-click, tự động mở MinIO, Backend và Frontend trong các cửa sổ riêng biệt.
-- START_NGROK.bat: Công cụ hỗ trợ tạo tunnel công khai để truy cập ứng dụng từ internet qua Ngrok.
-- ngrok.exe: Tệp thực thi của Ngrok được tích hợp sẵn để phục vụ việc chia sẻ demo.
-- README.md: Tài liệu kỹ thuật chi tiết về kiến trúc, tính năng và hướng dẫn vận hành.
+*Hệ thống sẽ tự động mở 3 cửa sổ dòng lệnh độc lập cho: MinIO Server, Backend API và Frontend.*
 
-### 🐍 Backend (/server) - FastAPI Engine
-- main.py: Điểm khởi đầu của ứng dụng, nơi đăng ký các routers và cấu hình Middleware (CORS).
-- dependencies.py: Chứa các Dependency Injection của FastAPI như xác thực Token (JWT) và quyền truy cập.
-- s3_service.py: Tầng giao tiếp cấp thấp với S3 (Boto3), xử lý Logic Versioning, Object Lock và Lifecycle.
-- sync_service.py: Bộ máy đồng bộ hóa phức tạp, quản lý việc khớp dữ liệu giữa local và cloud layer.
-- auth_service.py: Xử lý bảo mật: mã hóa mật khẩu (Bcrypt), tạo và xác thực mã định danh JWT.
-- s3_config.py: Quản lý cấu hình kết nối tới MinIO/AWS S3 thông qua Boto3 client.
-- **/routers (Modular API):**
-  - auth.py: API xử lý đăng nhập, đăng ký và quản lý phiên làm việc.
-  - files.py: Tập hợp API thao tác tệp tin (Upload đa luồng, Download, Metadata).
-  - share.py: Logic chia sẻ tệp giữa các người dùng và quản lý quyền truy cập.
-  - trash.py: Hệ thống thùng rác thông minh, cho phép khôi phục dữ liệu nhờ S3 Versioning.
-  - department.py: Quản lý không gian lưu trữ chung cho các phòng ban/nhóm.
-  - sync.py: API cung cấp trạng thái đồng bộ và điều khiển quá trình Backup.
+---
 
-### ⚛️ Frontend (/client) - React Modern UI
-- **/src/hooks (Business Logic Layer):**
-  - useFileSystem.js: Quản lý cấu trúc cây thư mục và trạng thái hệ thống tệp.
-  - useFileOperations.js: Triển khai các tác vụ như Upload, Move, Rename, Delete.
-  - useSync.js: Theo dõi tiến độ đồng bộ và trạng thái của Hybrid Sync.
-  - useAuth.js: Quản lý trạng thái đăng nhập và thông tin người dùng hiện tại.
-- **/src/components (UI Components):**
-  - FileBrowser.jsx: Thành phần trung tâm hiển thị Explorer-style view cho các tệp tin.
-  - Dashboard.jsx: Giao diện trực quan hóa dữ liệu lưu trữ bằng biểu đồ Analytics.
-  - SyncMonitor.jsx: Dashboard chuyên biệt để giám sát tiến trình Backup theo thời gian thực.
-  - modals/: Tập hợp các hộp thoại tương tác (Share, Preview, Confirm).
-- **/src/services & utils:**
-  - api.js: Cấu hình Axios với Interceptors để tự động đính kèm JWT vào mọi request.
-  - formatters.js: Các hàm helper để định dạng kích thước tệp, thời gian và biểu tượng icon.
+## 🔑 Thông tin đăng nhập mặc định
 
-### 📦 Storage (/minio) - Data Layer
-- minio.exe: Binary máy chủ S3 local phục vụ cho việc mô phỏng hạ tầng Cloud.
-- start_minio.bat: Script khởi động nhanh dịch vụ MinIO với cấu hình lưu trữ mặc định.
-- /data: Thư mục vật lý lưu trữ các Objects và Metadata của hệ thống S3.
+Sau khi khởi chạy, truy cập vào giao diện Web tại địa chỉ: **[http://localhost:5173](http://localhost:5173)**
 
+Sử dụng tài khoản Demo sau để đăng nhập:
+* **Email**: `admin@esoft.com`
+* **Mật khẩu**: `esoft_2026`
+* **Mã MFA**: `102030`
 
-## 🔐 Security & Setup (Crucial)
-For privacy and safety, sensitive credentials are NOT committed to the repository.
-1. Copy server/.env.example to server/.env.
-2. Copy client/.env.example to client/.env.
-3. Update the .env files with your actual credentials and a secure JWT_SECRET.
-4. Ensure MongoDB is running before starting the services.
+---
+
+## 🌐 Các cổng dịch vụ hoạt động
+
+* 💻 **Frontend (React)**: [http://localhost:5173](http://localhost:5173)
+* ⚙️ **Backend API Docs (FastAPI)**: [http://localhost:3000/docs](http://localhost:3000/docs)
+* 🗄️ **MinIO S3 Console**: [http://localhost:9001](http://localhost:9001)
+  *(Tài khoản: `esoft_admin` | Mật khẩu: `esoft_secret_key`)*
+* 💾 **MongoDB**: `mongodb://localhost:27017`
+
+---
+
+## ⚙️ Cấu hình môi trường (.env)
+Nếu cần thay đổi cấu hình kết nối, bạn có thể chỉnh sửa các file sau:
+* **Backend**: `server/.env` (Cấu hình cổng kết nối, MongoDB URI, và S3 bucket)
+* **Frontend**: `client/.env` (Cấu hình địa chỉ gọi API: `VITE_API_URL`)
+
+---
+
+## 📂 Cấu trúc dự án & Các tệp tin chính
+
+### 🟢 Thư mục gốc (Root)
+* `INSTALL_AND_START.bat`: Script tự động setup môi trường ảo Python, cài đặt package, cài npm và chạy dự án.
+* `run_demo.bat`: Script khởi chạy nhanh 1-Click (mở 3 tab cmd riêng biệt chạy MinIO, Backend và Frontend).
+* `START_NGROK.bat`: Công cụ hỗ trợ tạo tunnel kết nối công khai từ Internet qua Ngrok.
+
+### 🐍 Backend (`/server`) - FastAPI
+* `main.py`: Điểm khởi chạy FastAPI, cấu hình middleware CORS và lập lịch tự động (APScheduler).
+* `auth_service.py`: Xử lý đăng ký/đăng nhập, mã hóa Bcrypt và tạo token JWT.
+* `s3_service.py`: Các API giao tiếp trực tiếp với MinIO S3 (upload, download, Trash, Object Lock, Lifecycle).
+* `sync_service.py`: Bộ máy đồng bộ dữ liệu (Sync Engine) xử lý backup 3-Node từ Local -> S3 Transit -> Server 2.
+* `routers/`:
+  * `auth.py`: API xác thực người dùng.
+  * `files.py`: API tải lên, quản lý metadata, xoá tệp tin.
+  * `sync.py`: API điều khiển và lấy trạng thái của bộ máy đồng bộ.
+  * `trash.py` / `share.py` / `department.py`: API quản lý thùng rác, chia sẻ tệp và thư mục phòng ban.
+
+### ⚛️ Frontend (`/client`) - React + Vite
+* `src/components/`:
+  * `Dashboard.jsx`: Giao diện trực quan hoá dữ liệu phân tích dung lượng sử dụng.
+  * `FileBrowser.jsx`: Trình duyệt tệp tin dạng Explorer kéo thả linh hoạt.
+  * `SyncMonitor.jsx`: Dashboard giám sát tiến trình backup 3-Node theo thời gian thực.
+* `src/hooks/`:
+  * `useAuth.js` / `useFileSystem.js` / `useSync.js`: Quản lý state đăng nhập, cây thư mục và trạng thái sync.
+* `src/services/api.js`: Cấu hình Axios gọi API có kèm JWT Token.
+
+### 📦 Storage Simulator (`/minio`) - Data Layer
+* `minio.exe`: Trình giả lập dịch vụ lưu trữ đám mây S3 cục bộ.
+* `start_minio.bat`: Script khởi động nhanh máy chủ MinIO.
+* `data/`: Thư mục vật lý chứa dữ liệu thực tế được lưu trữ trên S3.
