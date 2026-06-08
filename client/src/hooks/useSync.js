@@ -15,7 +15,9 @@ export default function useSync(
     try {
       const res = await syncApi.getUserStatus(user.token);
       if (res.ok) setUserSyncStatus(await res.json());
-    } catch {}
+    } catch (e) {
+      console.warn('Failed to fetch user sync status', e);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export default function useSync(
       if (fetchStats) await fetchStats();
       setTimeout(() => setBackupStatus(null), 3000);
     } catch (err) {
+      console.error('Backup failed:', err);
       setBackupStatus('error');
       pushNotif('error', 'Backup failed', 'error');
       pushActivity('Backup failed', 'backup', '#ef4444');
@@ -71,7 +74,9 @@ export default function useSync(
         pushNotif('info', 'Pushed local changes to Transit Hub', 'cloud');
         setTimeout(fetchUserSyncStatus, 2000);
       }
-    } catch {}
+    } catch (e) {
+      console.error('Transit push error', e);
+    }
   }, [user, userSyncing, fetchUserSyncStatus, pushNotif]);
 
   const handleServer2Pull = useCallback(async () => {
@@ -82,7 +87,9 @@ export default function useSync(
         pushNotif('success', 'Server 2 is securely pulling data from Transit Hub', 'hard-drive');
         setTimeout(fetchUserSyncStatus, 2000);
       }
-    } catch {}
+    } catch (e) {
+      console.error('Server2 pull error', e);
+    }
   }, [user, userSyncing, fetchUserSyncStatus, pushNotif]);
 
   useEffect(() => {

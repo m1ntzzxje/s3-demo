@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BUCKET_NAME   = os.getenv("BUCKET_NAME", "esoft-backup-bucket")
-SERVER2_PATH  = Path(os.getenv("SERVER2_PATH", "C:/D/server2_backup"))
+SERVER2_PATH  = Path(os.getenv("SERVER2_PATH", "D:/server2_backup"))
 TRANSIT_ROOT  = "transit"          # S3 prefix for in-flight data
 MAX_RETRIES   = 3
 RETRY_DELAY_S = 15 * 60           # 15 minutes in seconds (shortened for dev)
@@ -72,7 +72,7 @@ def _save_job(job_id: str, job_type: str, status: str,
 # ══════════════════════════════════════════════════════════════════════════════
 #  JOB 1 — Push to S3 Transit (Global or User-scoped)
 # ══════════════════════════════════════════════════════════════════════════════
-def run_push_to_transit(user_id: str = None) -> dict:
+def run_push_to_transit(user_id: str = None, schedule_filter: str = None) -> dict:
     """
     Copy objects to transit/{date}/... 
     If user_id is provided, only copy that user's data.
@@ -102,11 +102,30 @@ def run_push_to_transit(user_id: str = None) -> dict:
         pages = paginator.paginate(Bucket=BUCKET_NAME, Prefix=list_prefix)
         
         all_objects = []
+        # Selective Sync: Fetch enabled keys from MongoDB
+        query = {"user_id": user_id, "sync_enabled": True}
+        if schedule_filter:
+            query["sync_schedule"] = schedule_filter
+            
+        enabled_docs = list(auth_service.db['files'].find(
+            query,
+            {"key": 1}
+        )) if user_id else []
+        enabled_keys = {d['key'] for d in enabled_docs}
+
         for page in pages:
             for obj in page.get("Contents", []):
                 key = obj["Key"]
                 # Skip transit prefix itself to avoid infinite recursion
-                if not key.startswith(TRANSIT_ROOT + "/"):
+                if key.startswith(TRANSIT_ROOT + "/"):
+                    continue
+                
+                # If user_id is provided, only include marked files
+                if user_id:
+                    if key in enabled_keys:
+                        all_objects.append(obj)
+                else:
+                    # Global sync includes everything (default behavior for system)
                     all_objects.append(obj)
     except Exception as e:
         msg = f"Failed to list objects: {e}"
@@ -134,6 +153,7 @@ def run_push_to_transit(user_id: str = None) -> dict:
         _save_job(job_id, job_type, "done", user_id=user_id, files_total=0, files_done=0, progress_pct=100.0, started_at=started, ended_at=datetime.now(timezone.utc))
         return {"job_id": job_id, "status": "done", "files_done": 0, "size_bytes": 0, "errors": []}
 
+    last_db_update = time.time()
     for obj in all_objects:
         src_key = obj["Key"]
         
@@ -160,9 +180,10 @@ def run_push_to_transit(user_id: str = None) -> dict:
             )
             done += 1
             size += obj.get("Size", 0)
-            # Update progress
-            if done % 5 == 0 or done == total:
+            # Update progress with debouncing (max 1 DB write per 2 seconds)
+            if time.time() - last_db_update > 2.0 or done == total:
                 _save_job(job_id, job_type, "running", user_id=user_id, files_total=total, files_done=done, size_bytes=size, progress_pct=(done/total)*100, started_at=started)
+                last_db_update = time.time()
         except Exception as e:
             errors.append(f"Copy failed [{src_key}]: {e}")
 
@@ -234,6 +255,7 @@ def run_pull_to_server2(user_id: str = None, date: str = None) -> dict:
         _save_job(job_id, job_type, "done", user_id=user_id, files_total=0, files_done=0, progress_pct=100.0, started_at=started, ended_at=datetime.now(timezone.utc))
         return {"job_id": job_id, "status": "done", "files_done": 0, "size_bytes": 0, "errors": []}
 
+    last_db_update = time.time()
     for obj in transit_objects:
         s3_key = obj["Key"]
         etag   = _etag_to_md5(obj.get("ETag", ""))
@@ -244,9 +266,10 @@ def run_pull_to_server2(user_id: str = None, date: str = None) -> dict:
         if _download_with_retry(s3_key, etag, local_path, archive_root, errors):
             done += 1
             size += obj.get("Size", 0)
-            # Update progress
-            if done % 5 == 0 or done == total:
+            # Update progress with debouncing
+            if time.time() - last_db_update > 2.0 or done == total:
                 _save_job(job_id, job_type, "running", user_id=user_id, files_total=total, files_done=done, size_bytes=size, progress_pct=(done/total)*100, started_at=started)
+                last_db_update = time.time()
 
     status = "done" if not errors else "done_with_errors"
     _save_job(job_id, job_type, status, user_id=user_id, files_total=total, files_done=done, size_bytes=size, progress_pct=100.0, errors=errors, started_at=started, ended_at=datetime.now(timezone.utc))
@@ -373,6 +396,28 @@ run_global_sync_to_transit = run_push_to_transit
 run_server2_pull           = run_pull_to_server2
 run_full_pipeline          = run_global_pipeline
 cleanup_s3_transit        = cleanup_transit
+    
+def handle_webhook_event(event_name: str, key: str, user_id: str):
+    """Real-time event handler for MinIO webhooks."""
+    # Ignore transit events
+    if key.startswith(TRANSIT_ROOT + "/"):
+        return
+        
+    logger.info(f"[Webhook] Event {event_name} for key {key}")
+    
+    if "ObjectCreated" in event_name:
+        # Trigger real-time backup for this user
+        run_user_pipeline(user_id)
+    elif "ObjectRemoved" in event_name:
+        # Resolve path on Server 2
+        local_path = SERVER2_PATH / key
+        if local_path.exists():
+            archive_root = SERVER2_PATH / user_id / "archive" / _today_label()
+            _ensure_dir(archive_root)
+            ts = int(time.time())
+            archive_dest = archive_root / f"{ts}_{local_path.name}"
+            shutil.move(str(local_path), str(archive_dest))
+            logger.info(f"[Webhook] Archived deleted file -> {archive_dest}")
     
 def get_user_sync_status(user_id: str) -> dict:
     """Get the last successful sync time for a specific user."""
@@ -504,3 +549,24 @@ def get_sync_history_scoped(user_id: str = None, limit: int = 20) -> list:
     except Exception as e:
         logger.warning(f"[SyncHistory] {e}")
         return []
+
+def run_hourly_sync():
+    """
+    Background job to process files with 'hourly' schedule.
+    """
+    logging.info("[Hourly Sync] Starting hourly scheduled backup task...")
+    try:
+        # Find all users who have at least one 'hourly' file
+        user_ids = auth_service.db['files'].distinct("user_id", {"sync_schedule": "hourly", "sync_enabled": True})
+        
+        for user_id in user_ids:
+            logging.info(f"[Hourly Sync] Processing user: {user_id}")
+            # Run push specifically for hourly files
+            run_push_to_transit(user_id, schedule_filter="hourly")
+            
+            # For this demo, we follow up with a pull immediately to keep Node 3 up to date
+            run_pull_to_server2(user_id)
+            
+        logging.info("[Hourly Sync] Completed.")
+    except Exception as e:
+        logging.error(f"[Hourly Sync] Failed: {e}")

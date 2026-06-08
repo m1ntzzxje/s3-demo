@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
 from dependencies import get_current_user, log_action, BUCKET_NAME
 from s3_service import upload_file
 import sync_service
@@ -72,3 +72,24 @@ def sync_cleanup_api(current_user: dict = Depends(get_current_user)):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/sync/webhook")
+async def s3_webhook_api(request: Request, background_tasks: BackgroundTasks):
+    """
+    MinIO Webhook endpoint for Event-Driven Real-time Sync & Deletion.
+    Configure MinIO to POST here on s3:ObjectCreated:* and s3:ObjectRemoved:*
+    """
+    try:
+        payload = await request.json()
+        records = payload.get("Records", [])
+        for record in records:
+            event_name = record.get("eventName", "")
+            key = record.get("s3", {}).get("object", {}).get("key", "")
+            if key:
+                parts = key.split("/")
+                if parts:
+                    user_id = parts[0]
+                    background_tasks.add_task(sync_service.handle_webhook_event, event_name, key, user_id)
+        return {"status": "received"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

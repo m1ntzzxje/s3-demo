@@ -55,6 +55,17 @@ async def startup_event():
         replace_existing=True,
         misfire_grace_time=3600,
     )
+    
+    # New: Hourly Sync for specific files
+    _scheduler.add_job(
+        sync_service.run_hourly_sync,
+        trigger="interval",
+        hours=1,
+        id="job_hourly_sync",
+        name="Hourly Selective Sync",
+        replace_existing=True
+    )
+    
     _scheduler.start()
 
     logging.info(f"[Scheduler] Jobs registered: push={sync_hour_push}h UTC, pull={sync_hour_pull}h UTC")

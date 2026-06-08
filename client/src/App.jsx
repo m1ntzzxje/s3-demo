@@ -32,7 +32,8 @@ export default function App() {
     previewFile, setPreviewFile, userSyncStatus, userSyncing, isDarkMode, setIsDarkMode, backupSchedule, setBackupSchedule, pushNotif, fetchStats, fetchFiles, fetchTrash,
     fetchShared, fetchDept, handleFileUpload, handleBackup, handleUserSyncTrigger, deleteFile, permanentDelete, openShareModal, submitShare,
     handleFolderUpload, enterFolder, enterBackups, goNavBack, goNavForward, goBackTo, restoreFile, handleDeptUpload,
-    deptDownload, confirmDelete, handlePreview, downloadFile, handleFileMove, deleteFolder, authHeaders
+    deptDownload, confirmDelete, handlePreview, downloadFile, handleFileMove, deleteFolder, authHeaders,
+    handleToggleSync, handleUpdateSchedule
   } = useAppLogic();
 
   if (!user) return <Auth onLoginSuccess={setUser} />;
@@ -86,6 +87,7 @@ export default function App() {
               foldersAtLevel={foldersAtLevel} sortedFiles={sortedFiles} searchQuery={searchQuery} deletingKey={deletingKey}
               selectedFile={selectedFile} setSelectedFile={setSelectedFile} handlePreview={handlePreview} downloadFile={downloadFile}
               downloadingKey={downloadingKey} openShareModal={openShareModal} deleteFile={deleteFile} deleteFolder={deleteFolder}
+              handleToggleSync={handleToggleSync} handleUpdateSchedule={handleUpdateSchedule}
             />
           )}
 

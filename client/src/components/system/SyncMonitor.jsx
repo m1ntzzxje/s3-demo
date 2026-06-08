@@ -377,6 +377,9 @@ export default function SyncMonitor({ token, pushNotif }) {
       <div className="animate-fade-up animate-stagger-4" style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
         {[
           { action: 'push',     label: 'Push My Data to Cloud',  color: '#8b5cf6', icon: <Cloud size={14} /> },
+          { action: 'pull',     label: 'Pull to Local Disk',     color: '#3b82f6', icon: <HardDrive size={14} /> },
+          { action: 'pipeline', label: 'Run Full Backup',       color: '#10b981', icon: <RefreshCw size={14} /> },
+          { action: 'cleanup',  label: 'Clear Transit Hub',      color: '#ef4444', icon: <Trash2 size={14} /> },
         ].map(({ action, label, color, icon }) => (
           <button
             key={action}

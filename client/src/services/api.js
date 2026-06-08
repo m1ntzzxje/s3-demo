@@ -38,6 +38,8 @@ export const syncApi = {
   // User-scoped
   getUserStatus:   (token) => apiCall('/sync/user-status',      token),
   triggerUserSync: (token) => apiCall('/sync/user-trigger',     token, { method: 'POST' }),
+  toggleFileSync:  (token, key, enabled) => apiCall('/files/sync-toggle', token, { method: 'POST', body: JSON.stringify({ key, enabled }), headers: { 'Content-Type': 'application/json' } }),
+  updateFileSchedule: (token, key, schedule) => apiCall('/files/sync-schedule', token, { method: 'POST', body: JSON.stringify({ key, schedule }), headers: { 'Content-Type': 'application/json' } }),
 };
 
 export default API_URL;

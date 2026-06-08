@@ -46,7 +46,25 @@ def get_stats_api(current_user: dict = Depends(get_current_user)):
 def get_files_api(current_user: dict = Depends(get_current_user)):
     try:
         prefix = f"{current_user['id']}/"
-        return list_files(BUCKET_NAME, prefix)
+        s3_files = list_files(BUCKET_NAME, prefix)
+        
+        # Get sync statuses from MongoDB
+        mongo_files = list(auth_service.files_collection.find(
+            {"user_id": current_user["id"]},
+            {"key": 1, "sync_enabled": 1, "sync_schedule": 1}
+        ))
+        sync_map = {f['key']: {
+            "enabled": f.get('sync_enabled', True),
+            "schedule": f.get('sync_schedule', 'daily')
+        } for f in mongo_files}
+        
+        # Merge status into S3 list
+        for f in s3_files:
+            meta = sync_map.get(f['Key'], {"enabled": True, "schedule": "daily"})
+            f['sync_enabled'] = meta["enabled"]
+            f['sync_schedule'] = meta["schedule"]
+            
+        return s3_files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -94,6 +112,8 @@ async def upload_api(
                 "content_type": file.content_type or "application/octet-stream",
                 "version_id": result.get("VersionId"),
                 "lock_days": lock_days,
+                "sync_enabled": True, 
+                "sync_schedule": "daily", # New: Default schedule
                 "uploaded_at": datetime.now(dt_timezone.utc)
             })
 
@@ -128,6 +148,45 @@ def delete_api(key: str, current_user: dict = Depends(get_current_user)):
         delete_file(BUCKET_NAME, key)
         log_action(current_user["id"], "delete", {"key": key})
         return {"message": "File deleted or marked for deletion (versioning)"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SyncToggleModel(BaseModel):
+    key: str
+    enabled: bool
+
+@router.post("/files/sync-toggle")
+def toggle_sync_api(body: SyncToggleModel, current_user: dict = Depends(get_current_user)):
+    if not body.key.startswith(f"{current_user['id']}/"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        auth_service.files_collection.update_one(
+            {"user_id": current_user["id"], "key": body.key},
+            {"$set": {"sync_enabled": body.enabled}},
+            upsert=True # In case metadata was missing
+        )
+        return {"message": f"Sync {'enabled' if body.enabled else 'disabled'} for file"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SyncScheduleModel(BaseModel):
+    key: str
+    schedule: str # 'immediate', 'hourly', 'daily', 'weekly', 'manual'
+
+@router.post("/files/sync-schedule")
+def update_schedule_api(body: SyncScheduleModel, current_user: dict = Depends(get_current_user)):
+    if not body.key.startswith(f"{current_user['id']}/"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if body.schedule not in ['immediate', 'hourly', 'daily', 'weekly', 'manual']:
+        raise HTTPException(status_code=400, detail="Invalid schedule type")
+        
+    try:
+        auth_service.files_collection.update_one(
+            {"user_id": current_user["id"], "key": body.key},
+            {"$set": {"sync_schedule": body.schedule}},
+            upsert=True
+        )
+        return {"message": f"Schedule updated to {body.schedule}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

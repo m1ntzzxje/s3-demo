@@ -1,109 +1,83 @@
 # Professional README for ESoft S3 Hybrid Backup Demo
 
 ## 📁 System Architecture
-- **Client (React + Vite)**: Modern UI with Glassmorphism, Dashboard, and File Explorer.
-- **Server (FastAPI)**: JWT-based Auth, Multi-tenant S3 Gateway.
-- **Storage**: MinIO (Local S3 Simulation) with Versioning & Lifecycle policies.
+- *Client (React + Vite)*: Modern UI with Glassmorphism, Dashboard, and File Explorer.
+- *Server (FastAPI)*: JWT-based Auth, Multi-tenant S3 Gateway.
+- *Storage*: MinIO (Local S3 Simulation) with Versioning & Lifecycle policies.
 
 ## 🚀 Getting Started (One-Click)
 Just run the launcher at the root:
-```bash
 ./run_demo.bat
-```
-*It will start MinIO, Backend (Port 3000), and Frontend (Port 5173).*
+It will start MinIO, Backend (Port 3000), and Frontend (Port 5173).
 
 ### 🌐 Public Access with Ngrok
 If you want to share the demo or access it from another device:
-1. Run `run_demo.bat` first.
-2. Run `START_NGROK.bat` (located in the root).
-3. Copy the generated `https://...ngrok-free.app` URL.
-4. Update `client/.env` -> `VITE_API_URL=https://your-url.ngrok-free.app/api`.
+1. Run run_demo.bat first.
+2. Run START_NGROK.bat (located in the root).
+3. Copy the generated https://...ngrok-free.app URL.
+4. Update client/.env -> VITE_API_URL=https://your-url.ngrok-free.app/api.
 5. Your Frontend will now talk to the public backend!
 
 
 ## 🛡️ Key Features
-1. **Multi-tenancy**: Every user has an isolated `user_id/` prefix on S3.
-2. **Hybrid Backup**: Sync local transactions to Physical S3 Layer.
-3. **Anti-Ransomware**: S3 Versioning & Trash system allows 100% recovery.
-4. **Collaboration**: Dedicated "Department" shared folder and peer-to-peer "Share" feature.
+1. *Multi-tenancy*: Every user has an isolated user_id/ prefix on S3.
+2. *Hybrid Backup*: Sync local transactions to Physical S3 Layer.
+3. *Anti-Ransomware*: S3 Versioning & Trash system allows 100% recovery.
+4. *Collaboration*: Dedicated "Department" shared folder and peer-to-peer "Share" feature.
 
 ## 🛠️ Tech Stack
-- **Frontend**: React, Recharts (Stats), Lucide Icons, Vanilla CSS.
-- **Backend**: Python (FastAPI), Boto3 (S3 Standard), MongoDB (Auth & Sharing metadata).
-- **Security**: Bcrypt password hashing, JWT Authorization, prefix-based isolation.
+- *Frontend*: React, Recharts (Stats), Lucide Icons, Vanilla CSS.
+- *Backend*: Python (FastAPI), Boto3 (S3 Standard), MongoDB (Auth & Sharing metadata).
+- *Security*: Bcrypt password hashing, JWT Authorization, prefix-based isolation.
 
 ## 📂 Structure & File Details
 
-### 🟢 Root Directory
-- `INSTALL_AND_START.bat`: Cài đặt môi trường ảo và khởi động toàn bộ ứng dụng S3.
-- `run_demo.bat`: File khởi động 1-click. Tự động bật đồng bộ MinIO, Backend và Frontend trong 3 cửa sổ riêng biệt.
-- `README.md`: Tài liệu hướng dẫn sử dụng và cấu trúc dự án.
+### 🟢 Root Directory (Quản lý dự án)
+- INSTALL_AND_START.bat: Kịch bản cài đặt tự động (Virtual Env, npm install) và khởi chạy toàn bộ hệ thống.
+- run_demo.bat: Trình khởi chạy 1-click, tự động mở MinIO, Backend và Frontend trong các cửa sổ riêng biệt.
+- START_NGROK.bat: Công cụ hỗ trợ tạo tunnel công khai để truy cập ứng dụng từ internet qua Ngrok.
+- ngrok.exe: Tệp thực thi của Ngrok được tích hợp sẵn để phục vụ việc chia sẻ demo.
+- README.md: Tài liệu kỹ thuật chi tiết về kiến trúc, tính năng và hướng dẫn vận hành.
 
-### 🐍 Backend (`/server`)
-- `main.py`: Trái tim của Backend. Định nghĩa toàn bộ API Endpoints (Upload, Download, Share, Trash, Auth).
-- `s3_service.py`: Chứa logic nghiệp vụ tương tác với S3 (Cấu hình Versioning, Lifecycle, Object Lock).
-- `sync_service.py`: Chịu trách nhiệm đồng bộ hóa (sync) và theo dõi trạng thái các tệp giữa local và remote.
-- `auth_service.py`: Quản lý người dùng, mã hóa mật khẩu và tạo token JWT bảo mật.
-- `s3_config.py`: Khởi tạo kết nối Boto3 Client tới máy chủ S3 (MinIO).
-- `requirements.txt`: Danh sách các thư viện Python cần thiết cho backend.
-- `.env.example`: Mẫu cấu hình biến môi trường cho backend.
+### 🐍 Backend (/server) - FastAPI Engine
+- main.py: Điểm khởi đầu của ứng dụng, nơi đăng ký các routers và cấu hình Middleware (CORS).
+- dependencies.py: Chứa các Dependency Injection của FastAPI như xác thực Token (JWT) và quyền truy cập.
+- s3_service.py: Tầng giao tiếp cấp thấp với S3 (Boto3), xử lý Logic Versioning, Object Lock và Lifecycle.
+- sync_service.py: Bộ máy đồng bộ hóa phức tạp, quản lý việc khớp dữ liệu giữa local và cloud layer.
+- auth_service.py: Xử lý bảo mật: mã hóa mật khẩu (Bcrypt), tạo và xác thực mã định danh JWT.
+- s3_config.py: Quản lý cấu hình kết nối tới MinIO/AWS S3 thông qua Boto3 client.
+- **/routers (Modular API):**
+  - auth.py: API xử lý đăng nhập, đăng ký và quản lý phiên làm việc.
+  - files.py: Tập hợp API thao tác tệp tin (Upload đa luồng, Download, Metadata).
+  - share.py: Logic chia sẻ tệp giữa các người dùng và quản lý quyền truy cập.
+  - trash.py: Hệ thống thùng rác thông minh, cho phép khôi phục dữ liệu nhờ S3 Versioning.
+  - department.py: Quản lý không gian lưu trữ chung cho các phòng ban/nhóm.
+  - sync.py: API cung cấp trạng thái đồng bộ và điều khiển quá trình Backup.
 
-### ⚛️ Frontend (`/client`)
+### ⚛️ Frontend (/client) - React Modern UI
+- **/src/hooks (Business Logic Layer):**
+  - useFileSystem.js: Quản lý cấu trúc cây thư mục và trạng thái hệ thống tệp.
+  - useFileOperations.js: Triển khai các tác vụ như Upload, Move, Rename, Delete.
+  - useSync.js: Theo dõi tiến độ đồng bộ và trạng thái của Hybrid Sync.
+  - useAuth.js: Quản lý trạng thái đăng nhập và thông tin người dùng hiện tại.
+- **/src/components (UI Components):**
+  - FileBrowser.jsx: Thành phần trung tâm hiển thị Explorer-style view cho các tệp tin.
+  - Dashboard.jsx: Giao diện trực quan hóa dữ liệu lưu trữ bằng biểu đồ Analytics.
+  - SyncMonitor.jsx: Dashboard chuyên biệt để giám sát tiến trình Backup theo thời gian thực.
+  - modals/: Tập hợp các hộp thoại tương tác (Share, Preview, Confirm).
+- **/src/services & utils:**
+  - api.js: Cấu hình Axios với Interceptors để tự động đính kèm JWT vào mọi request.
+  - formatters.js: Các hàm helper để định dạng kích thước tệp, thời gian và biểu tượng icon.
 
-**Core Files:**
-- `index.html`: Khung HTML chính của ứng dụng.
-- `package.json`: Chứa thông tin về các thư viện npm và script.
-- `vite.config.js`: Cấu hình hệ thống build Vite.
-- `eslint.config.js`: Cấu hình linter cho mã nguồn.
-- `.env.example`: Mẫu cấu hình biến môi trường cho frontend.
+### 📦 Storage (/minio) - Data Layer
+- minio.exe: Binary máy chủ S3 local phục vụ cho việc mô phỏng hạ tầng Cloud.
+- start_minio.bat: Script khởi động nhanh dịch vụ MinIO với cấu hình lưu trữ mặc định.
+- /data: Thư mục vật lý lưu trữ các Objects và Metadata của hệ thống S3.
 
-**`/src` Directory:**
-- `App.jsx`: Component gốc, đóng vai trò là Router chính và định tuyến giao diện.
-- `Auth.jsx`: Component xử lý giao diện đăng nhập và đăng ký.
-- `main.jsx`: Entry point khởi tạo React DOM.
-- `index.css`: File CSS toàn cục định nghĩa Theme Mode (Dark/Light) và phong cách chung.
-- `Auth.css`: Định nghĩa CSS đặc thù cho giao diện đăng nhập.
-
-**`/src/hooks` (Logic layer):**
-- `useAppLogic.js`: Hook gộp, điều phối chung các state chính.
-- `useAuth.js`: Quản lý trạng thái xác thực người dùng.
-- `useFileOperations.js`: Xử lý logic thao tác file (Upload, Download, Share, Xóa...).
-- `useFileSystem.js`: Quản lý state của hệ thống tệp và cấu trúc thư mục.
-- `useNotifications.js`: Cung cấp hàm hiển thị thông báo.
-- `useSettings.js`: Logic cấu hình cài đặt người dùng.
-- `useSync.js`: Quản lý trạng thái và thao tác liên quan tới Backup/Sync.
-
-**`/src/components` (UI pieces):**
-- `/layout`:
-  - `Header.jsx`: Thanh điều hướng ngang phía trên.
-  - `SidebarLeft.jsx`: Thanh menu bên trái.
-  - `SidebarRight.jsx`: Cửa sổ thông báo / lịch sử bên phải.
-- `/files`:
-  - `Breadcrumbs.jsx`: Thanh đường dẫn điều hướng thư mục.
-  - `FileBrowser.jsx`: Khung chính hiển thị danh sách các tệp và thư mục.
-  - `FileItem.jsx`: Component hiển thị chi tiết một tệp tin.
-  - `FolderItem.jsx`: Component hiển thị chi tiết một thư mục.
-  - `OtherViews.jsx`: Các góc nhìn/tab đặc biệt cho tệp.
-- `/dashboard`:
-  - `Dashboard.jsx`: Giao diện và biểu đồ thống kê Analytics.
-- `/modals`:
-  - `ConfirmDialog.jsx`: Hộp thoại xác nhận các thao tác quan trọng.
-  - `PreviewModal.jsx`: Modal xem trước nội dung tệp tin.
-  - `ShareModal.jsx`: Modal cấu hình quyền chia sẻ tệp.
-- `/system`:
-  - `Settings.jsx`: Giao diện cấu hình ứng dụng.
-  - `SyncMonitor.jsx`: Dashboard quản lý quá trình đồng bộ hóa (Hybrid Sync).
-
-**`/src/services` & `/src/utils`:**
-- `api.js`: File cấu hình Axios, xử lý HTTP request tự động chèn token JWT.
-- `formatters.js`: Các hàm tiện ích (formatSize, formatDate, renderIcon, v.v...).
-
-### 📦 Storage (`/minio`)
-- Thư mục lưu trữ dữ liệu mô phỏng S3 thực tế tại local.
 
 ## 🔐 Security & Setup (Crucial)
 For privacy and safety, sensitive credentials are NOT committed to the repository.
-1. Copy `server/.env.example` to `server/.env`.
-2. Copy `client/.env.example` to `client/.env`.
-3. Update the `.env` files with your actual credentials and a secure `JWT_SECRET`.
+1. Copy server/.env.example to server/.env.
+2. Copy client/.env.example to client/.env.
+3. Update the .env files with your actual credentials and a secure JWT_SECRET.
 4. Ensure MongoDB is running before starting the services.

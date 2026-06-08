@@ -38,7 +38,9 @@ export default function FileBrowser({
   downloadingKey,
   openShareModal,
   deleteFile,
-  deleteFolder
+  deleteFolder,
+  handleToggleSync,
+  handleUpdateSchedule
 }) {
   return (
     <div>
@@ -140,6 +142,8 @@ export default function FileBrowser({
               handlePreview={handlePreview} downloadFile={downloadFile} 
               downloadingKey={downloadingKey} openShareModal={openShareModal} 
               deleteFile={deleteFile} 
+              handleToggleSync={handleToggleSync}
+              handleUpdateSchedule={handleUpdateSchedule}
             />
           ))
         )}

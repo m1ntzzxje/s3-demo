@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Download, Share2, Trash2, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Eye, Download, Share2, Trash2, ShieldCheck, RefreshCw, Cloud, CloudOff, Clock } from 'lucide-react';
 import { formatSize, timeAgo, fileIcon, stripTimestamp } from '../../utils/formatters';
 
 export default function FileItem({ 
@@ -11,9 +11,13 @@ export default function FileItem({
   downloadFile, 
   downloadingKey, 
   openShareModal, 
-  deleteFile 
+  deleteFile,
+  handleToggleSync,
+  handleUpdateSchedule
 }) {
   const isDeleting = deletingKey === file.Key;
+  const syncEnabled = file.sync_enabled !== false; 
+  const syncSchedule = file.sync_schedule || 'daily';
   
   return (
     <div 
@@ -35,11 +39,38 @@ export default function FileItem({
           </div>
           <div className="file-meta">
             {file.Key.includes('/backup/') && <span className="file-tag" style={{background: '#dbeafe', color: '#1e40af'}}>system-state</span>}
+            {syncEnabled && (
+              <span className="file-tag" style={{background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px'}}>
+                <Clock size={10} /> {syncSchedule}
+              </span>
+            )}
             <span>{formatSize(file.Size)} • {timeAgo(file.LastModified)}</span>
           </div>
         </div>
       </div>
-      <div className="header-actions" style={{gap: '0.5rem'}}>
+      <div className="header-actions" style={{gap: '0.4rem'}}>
+        {syncEnabled && (
+          <select 
+            className="schedule-select"
+            value={syncSchedule}
+            onChange={(e) => handleUpdateSchedule(file.Key, e.target.value)}
+            style={{fontSize: '0.65rem', padding: '2px 4px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer'}}
+          >
+            <option value="immediate">Real-time</option>
+            <option value="hourly">Hourly</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="manual">Manual</option>
+          </select>
+        )}
+        <button 
+          className={`icon-action-btn ${syncEnabled ? 'blue' : ''}`} 
+          title={syncEnabled ? "Backup Enabled" : "Backup Disabled"} 
+          onClick={(e) => { e.stopPropagation(); handleToggleSync(file.Key, syncEnabled); }}
+          style={{background: syncEnabled ? 'rgba(59, 130, 246, 0.1)' : 'var(--panel)', color: syncEnabled ? '#3b82f6' : 'var(--muted)'}}
+        >
+          {syncEnabled ? <Cloud size={15}/> : <CloudOff size={15}/>}
+        </button>
         <button 
           className={`icon-action-btn ${selectedFile?.Key === file.Key ? 'active' : ''}`} 
           title="File Details" 

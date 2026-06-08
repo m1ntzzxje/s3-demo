@@ -209,11 +209,41 @@ export default function useFileOperations(
     } catch (err) { pushNotif('error', `Restore failed`, 'error'); }
   };
 
+  const handleToggleSync = async (key, currentStatus) => {
+    try {
+      const res = await fetch(`${API_URL}/files/sync-toggle`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, enabled: !currentStatus })
+      });
+      if (res.ok) {
+        pushNotif('info', !currentStatus ? 'Sync enabled for file' : 'Sync disabled for file', 'cloud');
+        await fetchFiles();
+      }
+    } catch (err) { 
+      pushNotif('error', 'Toggle sync failed', 'error'); 
+    }
+  };
+
+  const handleUpdateSchedule = async (key, schedule) => {
+    try {
+      const res = await fetch(`${API_URL}/files/sync-schedule`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, schedule })
+      });
+      if (res.ok) {
+        pushNotif('success', `Schedule set to: ${schedule}`, 'clock');
+        await fetchFiles();
+      }
+    } catch (err) { pushNotif('error', 'Update schedule failed', 'error'); }
+  };
+
   return {
     uploading, uploadError, uploadRetryCount, deletingKey, confirmKey, confirmType, downloadingKey, deptUploading,
     shareModalKey, shareEmail, setShareEmail, fileInputRef, folderInputRef, deptInputRef,
     handleFileUpload, handleFolderUpload, handleDeptUpload, deleteFile, permanentDelete, deleteFolder,
     openShareModal, submitShare, confirmDelete, handlePreview, downloadFile, deptDownload, handleFileMove, restoreFile,
-    setShareModalKey, setConfirmKey
+    setShareModalKey, setConfirmKey, handleToggleSync, handleUpdateSchedule
   };
 }

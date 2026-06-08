@@ -40,3 +40,8 @@ db.sqlite3
 
 # Ngrok
 ngrok.exe
+
+# MinIO Client & Scratch
+mc.exe
+mc.*.exe
+scratch/
